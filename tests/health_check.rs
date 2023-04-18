@@ -1,22 +1,56 @@
-use std::net::TcpListener;
-
 use mongodb::bson::doc;
-use zero::configuration::get_configuration;
+use std::net::TcpListener;
+use std::sync::Once;
+use zero::{
+    configuration::get_configuration,
+    telemetry::{get_subscriber, init_subscriber},
+};
 
-fn spawn_app() -> String {
+static TRACING: Once = Once::new();
+
+pub struct TestApp {
+    pub address: String,
+    pub connection: actix_web::web::Data<mongodb::Client>,
+}
+
+async fn spawn_app() -> TestApp {
+    TRACING.call_once(|| {
+        let default_filter_level = "info".into();
+        let subscriber_name = "test".into();
+        if std::env::var("TEST_LOG").is_ok() {
+            let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+            init_subscriber(subscriber);
+        } else {
+            let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+            init_subscriber(subscriber);
+        }
+    });
+
     let listener = TcpListener::bind("localhost:0").expect("Failed to bind port");
     let port = listener.local_addr().unwrap().port();
-    let server = zero::startup::run(listener).expect("Failed to bind address");
+    let address = format!("http://localhost:{port}");
+
+    let configuration = get_configuration().expect("Failed to read configuration");
+    let connection_string = configuration.database.connection_string();
+    let connection = mongodb::Client::with_uri_str(&connection_string)
+        .await
+        .expect("Failed to connect to Mongodb");
+    let connection = actix_web::web::Data::new(connection);
+
+    let server = zero::startup::run(listener, connection.clone()).expect("Failed to bind address");
     let _ = tokio::spawn(server);
-    format!("http://localhost:{port}")
+    TestApp {
+        address,
+        connection,
+    }
 }
 
 #[tokio::test]
 async fn health_check_works() {
-    let address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{address}/health_check"))
+        .get(format!("{}/health_check", app.address))
         .send()
         .await
         .expect("Failed to execute request");
@@ -29,17 +63,12 @@ async fn health_check_works() {
 async fn subscribe_returns_a_200_for_valid_form_data() {
     use zero::routes::FormData;
 
-    let app_address = spawn_app();
-    let configuration = get_configuration().expect("Failed to read configuration");
-    let connection_string = configuration.database.connection_string();
-    let connection = mongodb::Client::with_uri_str(&connection_string)
-        .await
-        .expect("Failed to connect to Mongodb");
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
-        .post(format!("{app_address}/subscriptions"))
+        .post(format!("{}/subscriptions", app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -48,21 +77,22 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 
     assert_eq!(200, response.status().as_u16());
 
-    let saved = connection
+    if let Some(saved) = app
+        .connection
         .database("zero")
         .collection::<FormData>("subscriptions")
-        .find_one(doc! {}, None)
+        .find_one(doc! {"email": "ursula_le_guin@gmail.com"}, None)
         .await
         .expect("Failed to get subscriptions")
-        .unwrap();
-
-    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
-    assert_eq!(saved.name, "le guin");
+    {
+        assert_eq!(saved.email, "ursula_le_guin@gmail.com");
+        assert_eq!(saved.name, "le guin");
+    }
 }
 
 #[tokio::test]
 async fn subscribe_returns_a_400_when_data_is_missing() {
-    let app_address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
     let test_cases = vec![
         ("name=le%20guin", "missing the email"),
@@ -72,7 +102,7 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
 
     for (invalid_body, error_message) in test_cases {
         let response = client
-            .post(format!("{app_address}/subscriptions"))
+            .post(format!("{}/subscriptions", app.address))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(invalid_body)
             .send()
