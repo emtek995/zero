@@ -1,3 +1,5 @@
+use secrecy::Secret;
+
 #[derive(serde::Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
@@ -12,11 +14,11 @@ pub struct DatabaseSettings {
 }
 
 impl DatabaseSettings {
-    pub fn connection_string(&self) -> String {
-        format!(
+    pub fn connection_string(&self) -> Secret<String> {
+        Secret::new(format!(
             "mongodb://{}:{}/{}",
             self.host, self.port, self.database_name
-        )
+        ))
     }
 }
 

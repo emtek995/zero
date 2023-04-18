@@ -1,4 +1,5 @@
 use mongodb::bson::doc;
+use secrecy::ExposeSecret;
 use std::net::TcpListener;
 use std::sync::Once;
 use zero::{
@@ -31,10 +32,10 @@ async fn spawn_app() -> TestApp {
     let address = format!("http://localhost:{port}");
 
     let configuration = get_configuration().expect("Failed to read configuration");
-    let connection_string = configuration.database.connection_string();
-    let connection = mongodb::Client::with_uri_str(&connection_string)
-        .await
-        .expect("Failed to connect to Mongodb");
+    let connection =
+        mongodb::Client::with_uri_str(configuration.database.connection_string().expose_secret())
+            .await
+            .expect("Failed to connect to Mongodb");
     let connection = actix_web::web::Data::new(connection);
 
     let server = zero::startup::run(listener, connection.clone()).expect("Failed to bind address");

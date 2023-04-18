@@ -2,6 +2,7 @@ use std::net::TcpListener;
 
 use actix_web::web;
 use mongodb::{bson::doc, options::IndexOptions, Client, IndexModel};
+use secrecy::ExposeSecret;
 
 use zero::{
     configuration::get_configuration,
@@ -19,9 +20,10 @@ async fn main() -> Result<(), std::io::Error> {
     let listener = TcpListener::bind(format!("localhost:{}", configuration.application_port))
         .expect("Failed to bind port");
 
-    let connection = mongodb::Client::with_uri_str(configuration.database.connection_string())
-        .await
-        .expect("Failed connection to database");
+    let connection =
+        mongodb::Client::with_uri_str(configuration.database.connection_string().expose_secret())
+            .await
+            .expect("Failed connection to database");
 
     create_email_index(&connection).await;
 
