@@ -1,3 +1,4 @@
+use actix_web::web;
 use mongodb::bson::doc;
 use secrecy::ExposeSecret;
 use std::net::TcpListener;
@@ -11,7 +12,7 @@ static TRACING: Once = Once::new();
 
 pub struct TestApp {
     pub address: String,
-    pub connection: actix_web::web::Data<mongodb::Client>,
+    pub db_client: web::Data<mongodb::Client>,
 }
 
 async fn spawn_app() -> TestApp {
@@ -32,18 +33,15 @@ async fn spawn_app() -> TestApp {
     let address = format!("http://localhost:{port}");
 
     let configuration = get_configuration().expect("Failed to read configuration");
-    let connection =
+    let db_client =
         mongodb::Client::with_uri_str(configuration.database.connection_string().expose_secret())
             .await
             .expect("Failed to connect to Mongodb");
-    let connection = actix_web::web::Data::new(connection);
+    let db_client = web::Data::new(db_client);
 
-    let server = zero::startup::run(listener, connection.clone()).expect("Failed to bind address");
+    let server = zero::startup::run(listener, db_client.clone()).expect("Failed to bind address");
     let _ = tokio::spawn(server);
-    TestApp {
-        address,
-        connection,
-    }
+    TestApp { address, db_client }
 }
 
 #[tokio::test]
@@ -79,7 +77,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     assert_eq!(200, response.status().as_u16());
 
     if let Some(saved) = app
-        .connection
+        .db_client
         .database("zero")
         .collection::<FormData>("subscriptions")
         .find_one(doc! {"email": "ursula_le_guin@gmail.com"}, None)

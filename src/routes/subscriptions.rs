@@ -1,7 +1,6 @@
 use actix_web::{web, HttpResponse};
 use mongodb::bson::doc;
 use mongodb::options::UpdateOptions;
-use uuid::Uuid;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct FormData {
@@ -11,18 +10,17 @@ pub struct FormData {
 
 #[tracing::instrument(
     name = "Adding a new subscriber",
-    skip(form, connection),
+    skip(form, db_client),
     fields(
-        request_id = %Uuid::new_v4(),
         subscriber_email = %form.email,
         subscriber_name = %form.name,
     )
 )]
 pub async fn subscribe(
     form: web::Form<FormData>,
-    connection: web::Data<mongodb::Client>,
+    db_client: web::Data<mongodb::Client>,
 ) -> HttpResponse {
-    match insert_subscriber(&connection, &form).await {
+    match insert_subscriber(&db_client, &form).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
@@ -30,14 +28,14 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Saving new subscriber details in the database",
-    skip(form, connection)
+    skip(form, db_client)
 )]
 pub async fn insert_subscriber(
-    connection: &mongodb::Client,
+    db_client: &mongodb::Client,
     form: &FormData,
 ) -> Result<(), mongodb::error::Error> {
-    let options = UpdateOptions::builder().upsert(true).build();
-    connection
+    let db_options = UpdateOptions::builder().upsert(true).build();
+    db_client
         .database("zero")
         .collection::<FormData>("subscribers")
         .update_one(
@@ -50,7 +48,7 @@ pub async fn insert_subscriber(
                     "name": form.name.clone(),
                 }
             },
-            Some(options),
+            Some(db_options),
         )
         .await
         .map_err(|e| {
