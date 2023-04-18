@@ -11,13 +11,14 @@ pub struct DatabaseSettings {
     pub port: u16,
     pub host: String,
     pub database_name: String,
+    pub database_password: String,
 }
 
 impl DatabaseSettings {
     pub fn connection_string(&self) -> Secret<String> {
         Secret::new(format!(
-            "mongodb://{}:{}/{}",
-            self.host, self.port, self.database_name
+            "mongodb+srv://{}:{}@{}",
+            self.database_name, self.database_password, self.host
         ))
     }
 }
