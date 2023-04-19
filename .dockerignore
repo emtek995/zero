@@ -1,1 +1,5 @@
-/target
+target/
+tests/
+Dockerfile
+scripts/
+migrations/

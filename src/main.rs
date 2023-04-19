@@ -17,8 +17,11 @@ async fn main() -> Result<(), std::io::Error> {
 
     let configuration = get_configuration().expect("Failed to get configuration");
 
-    let listener = TcpListener::bind(format!("localhost:{}", configuration.application_port))
-        .expect("Failed to bind port");
+    let listener = TcpListener::bind(format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    ))
+    .expect("Failed to bind port");
 
     let db_client =
         mongodb::Client::with_uri_str(configuration.database.connection_string().expose_secret())
