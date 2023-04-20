@@ -1,4 +1,5 @@
-use secrecy::Secret;
+use secrecy::{ExposeSecret, Secret};
+use serde_aux::field_attributes::deserialize_number_from_string;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -8,23 +9,27 @@ pub struct Settings {
 
 #[derive(serde::Deserialize)]
 pub struct ApplicationSettings {
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
 }
 
 #[derive(serde::Deserialize)]
 pub struct DatabaseSettings {
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
     pub database_name: String,
-    pub database_password: String,
+    pub database_password: Secret<String>,
 }
 
 impl DatabaseSettings {
     pub fn connection_string(&self) -> Secret<String> {
         Secret::new(format!(
             "mongodb+srv://{}:{}@{}",
-            self.database_name, self.database_password, self.host
+            self.database_name,
+            self.database_password.expose_secret(),
+            self.host
         ))
     }
 }
@@ -45,6 +50,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .add_source(config::File::with_name(
             format!("{}/configuration/{}", base_path, environment.as_str()).as_str(),
         ))
+        .add_source(config::Environment::with_prefix("app").separator("__"))
         .build()?;
 
     settings.try_deserialize()
