@@ -1,3 +1,4 @@
+use anyhow::Result;
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 
@@ -34,7 +35,7 @@ impl DatabaseSettings {
     }
 }
 
-pub fn get_configuration() -> Result<Settings, config::ConfigError> {
+pub fn get_configuration() -> Result<Settings> {
     let environment: Environment = std::env::var("APP_ENVIRONMENT")
         .unwrap_or_else(|_| "local".into())
         .try_into()
@@ -53,7 +54,7 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .add_source(config::Environment::with_prefix("app").separator("__"))
         .build()?;
 
-    settings.try_deserialize()
+    settings.try_deserialize().map_err(|e| e.into())
 }
 
 pub enum Environment {

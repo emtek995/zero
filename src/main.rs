@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 
 use actix_web::web;
+use anyhow::Result;
 use mongodb::{bson::doc, options::IndexOptions, IndexModel};
 use secrecy::ExposeSecret;
 
@@ -11,7 +12,7 @@ use zero::{
 };
 
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
+async fn main() -> Result<()> {
     let subscriber = get_subscriber("zero".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
