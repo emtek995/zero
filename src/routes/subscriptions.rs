@@ -3,7 +3,7 @@ use anyhow::Result;
 use mongodb::bson::doc;
 use mongodb::options::UpdateOptions;
 
-use crate::domain::{NewSubscriber, SubscriberName};
+use crate::domain::{NewSubscriber, SubscriberName, SubscriberEmail};
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct FormData {
@@ -28,8 +28,13 @@ pub async fn subscribe(
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
 
+    let email = match SubscriberEmail::parse(form.0.email) {
+        Ok(email) => email,
+        Err(_) => return HttpResponse::BadRequest().finish(),
+    };
+
     let new_subscriber = NewSubscriber {
-        email: form.0.email,
+        email,
         name,
     };
     match insert_subscriber(&db_client, &new_subscriber).await {
@@ -52,12 +57,13 @@ pub async fn insert_subscriber(
         .collection::<FormData>("subscribers")
         .update_one(
             doc! {
-                "email": new_subscriber.email.clone(),
+                "email": new_subscriber.email.as_ref(),
             },
             doc! {
-                "$set": {
-                    "email": new_subscriber.email.clone(),
+                "$setOnInsert": {
+                    "email": new_subscriber.email.as_ref(),
                     "name": new_subscriber.name.as_ref(),
+                    "created": chrono::Utc::now(),
                 }
             },
             Some(db_options),
