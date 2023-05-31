@@ -5,6 +5,7 @@ use std::net::TcpListener;
 use std::sync::Once;
 use zero::{
     configuration::get_configuration,
+    email_client::EmailClient,
     telemetry::{get_subscriber, init_subscriber},
 };
 
@@ -38,8 +39,18 @@ async fn spawn_app() -> TestApp {
             .await
             .expect("Failed to connect to Mongodb");
     let db_client = web::Data::new(db_client);
+    let email_sender = configuration
+        .email_client
+        .sender()
+        .expect("Invalid sender email");
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url.clone(),
+        configuration.email_client.client_secret(),
+        email_sender,
+    );
 
-    let server = zero::startup::run(listener, db_client.clone()).expect("Failed to bind address");
+    let server = zero::startup::run(listener, db_client.clone(), email_client)
+        .expect("Failed to bind address");
     let _ = tokio::spawn(server);
     TestApp { address, db_client }
 }

@@ -7,6 +7,7 @@ use secrecy::ExposeSecret;
 
 use zero::{
     configuration::get_configuration,
+    email_client::EmailClient,
     startup::run,
     telemetry::{get_subscriber, init_subscriber},
 };
@@ -30,9 +31,19 @@ async fn main() -> Result<()> {
             .expect("Failed connection to database");
 
     create_email_index(&db_client).await;
-
     let db_client = web::Data::new(db_client);
-    run(listener, db_client)?.await?;
+
+    let email_sender = configuration
+        .email_client
+        .sender()
+        .expect("Invalid sender email");
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url.clone(),
+        configuration.email_client.client_secret(),
+        email_sender,
+    );
+
+    run(listener, db_client, email_client)?.await?;
     Ok(())
 }
 
